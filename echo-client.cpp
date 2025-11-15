@@ -1,12 +1,7 @@
 
 #include <iostream>
-#include <cstdio>
 
-#include <vector>
 #include <iostream>
-#include <fstream>
-#include <thread>
-#include <filesystem>
 #include <string_view>
 
 #include <sys/time.h>
@@ -22,7 +17,6 @@ using namespace std;
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/detached.hpp>
 #include <boost/asio/signal_set.hpp>
-#include <cstdio>
 
 using boost::asio::ip::tcp;
 using boost::asio::awaitable;
@@ -44,11 +38,11 @@ void echo(const std::string& message,
 
         // Resolve the hostname and port
         tcp::resolver resolver{executor};
-        tcp::resolver::query q{server, port};
-        tcp::resolver::iterator ep = co_await resolver.async_resolve(q, use_awaitable);
+        auto endpoints =
+            co_await resolver.async_resolve(server, port, use_awaitable);
 
-        // Connect asynchronously to the echo server
-        co_await s.async_connect(*ep, use_awaitable);
+        // Connect asynchronously to the echo server (tries all endpoints)
+        co_await async_connect(s, endpoints, use_awaitable);
 
         // Asynchronously send the message
         co_await boost::asio::async_write(s, boost::asio::buffer(message), use_awaitable);
@@ -92,11 +86,11 @@ auto async_echox(
 
             // Resolve the hostname and port
             tcp::resolver resolver{executor};
-            tcp::resolver::query q{server, port};
-            tcp::resolver::iterator ep = co_await resolver.async_resolve(q, use_awaitable);
+            auto endpoints =
+                co_await resolver.async_resolve(server, port, use_awaitable);
 
-            // Connect asynchronously to the echo server
-            co_await s.async_connect(*ep, use_awaitable);
+            // Connect asynchronously to the echo server (tries all endpoints)
+            co_await async_connect(s, endpoints, use_awaitable);
 
             // Asynchronously send the message
             co_await boost::asio::async_write(s, boost::asio::buffer(message), use_awaitable);
@@ -136,9 +130,9 @@ auto async_echo(
         CompletionToken&& token) {
 
     return boost::asio::async_compose<CompletionToken, void()>(
-                [&message, &server, &port, &executor](auto& self) {
+                [&message, &server, &port, &executor](auto&& self) {
 
-        co_spawn(executor, [message, server, port, &self]() mutable ->awaitable<void>  {
+            co_spawn(executor, [message, server, port, self=std::move(self)]() mutable ->awaitable<void>  {
             // Initialize a TCP socket
 
             auto executor = get_associated_executor(use_awaitable);
@@ -147,11 +141,11 @@ auto async_echo(
 
             // Resolve the hostname and port
             tcp::resolver resolver{executor};
-            tcp::resolver::query q{server, port};
-            tcp::resolver::iterator ep = co_await resolver.async_resolve(q, use_awaitable);
+            auto endpoints =
+                co_await resolver.async_resolve(server, port, use_awaitable);
 
             // Connect asynchronously to the echo server
-            co_await s.async_connect(*ep, use_awaitable);
+            co_await async_connect(s, endpoints, use_awaitable);
 
             // Asynchronously send the message
             co_await boost::asio::async_write(s, boost::asio::buffer(message), use_awaitable);
@@ -181,7 +175,7 @@ int main()
 {
   try
   {
-    boost::asio::io_service ioCtx(1);
+    boost::asio::io_context ioCtx;
 
     // Call the "normal" echo()
     echo("test 1", "127.0.0.1", "55555");
@@ -189,7 +183,7 @@ int main()
     echo("test 3", "127.0.0.1", "55555");
 
     // Call async_echo() from a stackful coroutine
-    spawn(ioCtx, [](boost::asio::yield_context yield) {
+    const auto res = spawn(ioCtx, [](boost::asio::yield_context yield) {
         auto executor = get_associated_executor(yield);
         async_echo(executor, "async message 1", "127.0.0.1", "55555", yield);
         async_echo(executor, "async message 2", "127.0.0.1", "55555", yield);
