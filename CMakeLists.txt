@@ -14,8 +14,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 add_definitions(-DBOOST_COROUTINES_NO_DEPRECATION_WARNING -DBoost_NO_WARN_NEW_VERSIONS=ON)
 
-find_package(Boost 1.75 REQUIRED COMPONENTS
-    system
+find_package(Boost 1.75 MODULE REQUIRED
     program_options
     date_time
     context
